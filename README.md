@@ -23,25 +23,17 @@ A Linux vulnerability scanner with an optional local-LLM explanation layer. Sing
 9. `/etc/shadow` permissions and ownership
 10. Brute-force attempts in `/var/log/auth.log`
 
-## Quickstart
+## Usage
 
 ```bash
 git clone https://github.com/w3rau1/LocalDoors.git
 cd LocalDoors
-sudo python3 LocalDoors.py
+sudo python3 LocalDoors.py -o report.html
 ```
 
 Then open `report.html` in a browser.
 
-`sudo` is only needed to unlock the checks that require root to read (`/etc/shadow`, SUID files under `/`). Run without it and the scanner still works - those specific checks just report `failed-to-run` (insufficient permissions) instead of crashing, and every other check still completes normally.
-
-## Usage
-
-```bash
-python3 LocalDoors.py -o report.html
-```
-
-Each check runs independently and can never crash the whole scan - if a check can't run (missing permissions, missing tool, unsupported distro), it reports `failed-to-run` instead of a false result.
+`sudo` is only needed to unlock the checks that require root to read (`/etc/shadow`, SUID files under `/`). Run without it and the scanner still works - those specific checks just report `failed-to-run` (insufficient permissions) instead of crashing, and every other check still completes normally, since each check runs independently and can never take down the whole scan.
 
 ## Status
 
