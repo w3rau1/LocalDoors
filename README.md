@@ -1,3 +1,5 @@
+<img src="assets/logo.svg" width="120" alt="LocalDoors logo">
+
 # LocalDoors
 
 A Linux vulnerability scanner with an optional local-LLM explanation layer. Single Python file, standard library only, designed to run on weak or fully offline machines (including bare VMs with no GPU and no internet).
