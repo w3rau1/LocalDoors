@@ -67,14 +67,28 @@ def run_check(check_id, title, func):
 
 
 def _run(cmd):
-    """Run a shell command, return stdout as text ('' on any failure)."""
+    """Run a shell command, return its stdout, or None if it could not be run
+    (missing binary, no permission, timed out). Callers must NOT treat None the
+    same as "" - "" means the command ran fine and simply printed nothing, which
+    for checks like world-writable or pending-updates is itself a valid, common
+    passing result and must not be confused with a failed/timed-out scan."""
     try:
         result = subprocess.run(
             cmd, shell=False, capture_output=True, text=True, timeout=30
         )
         return result.stdout
     except Exception:
-        return ""
+        return None
+
+
+def _run_first(*cmds):
+    """Try each command in turn, return the stdout of the first one that actually
+    ran (even if empty) - None only if every command failed or is missing."""
+    for cmd in cmds:
+        output = _run(cmd)
+        if output is not None:
+            return output
+    return None
 
 
 # --- Check 1: open ports and listening services -----------------------------
@@ -95,8 +109,8 @@ RISKY_PORTS = {
 
 def check_open_ports():
     findings = []
-    output = _run(["ss", "-tulnH"]) or _run(["netstat", "-tulnH"])
-    if not output:
+    output = _run_first(["ss", "-tulnH"], ["netstat", "-tulnH"])
+    if output is None:
         findings.append(Finding(
             check_id="open-ports",
             title="Открытые порты и сервисы",
@@ -251,6 +265,15 @@ def check_pending_updates():
     # Deliberately NOT running "apt update" here: a scanner shouldn't mutate system
     # state or need network/sudo just to report. Result reflects the last apt update.
     output = _run(["apt", "list", "--upgradable"])
+    if output is None:
+        findings.append(Finding(
+            check_id="pending-updates",
+            title="Доступные обновления безопасности",
+            severity=Severity.INFO,
+            description="failed-to-run: не удалось выполнить apt list --upgradable.",
+        ))
+        return findings
+
     lines = [l for l in output.splitlines() if "/" in l and not l.startswith("Listing")]
     security_updates = [l for l in lines if "-security" in l]
 
@@ -288,6 +311,14 @@ def check_firewall():
     findings = []
     if shutil.which("ufw"):
         output = _run(["ufw", "status"])
+        if output is None:
+            findings.append(Finding(
+                check_id="firewall",
+                title="Статус и правила файрвола",
+                severity=Severity.INFO,
+                description="failed-to-run: не удалось выполнить ufw status.",
+            ))
+            return findings
         if "Status: active" in output:
             rule_lines = [l for l in output.splitlines() if re.search(r"(ALLOW|DENY|REJECT)", l)]
             findings.append(Finding(
@@ -382,7 +413,7 @@ def check_privileged_users():
 
     members = []
     for group_name in ("sudo", "wheel"):
-        group_line = _run(["getent", "group", group_name]).strip()
+        group_line = (_run(["getent", "group", group_name]) or "").strip()
         fields = group_line.split(":")
         if len(fields) == 4 and fields[3]:
             members.extend(m for m in fields[3].split(",") if m)
@@ -523,6 +554,15 @@ def check_world_writable():
     # symlink under the target dirs would falsely show up as world-writable.
     output = _run(["find", *existing_dirs, "-xdev", "!", "-type", "l",
                    "-perm", "-0002", "!", "-perm", "-1000"])
+    if output is None:
+        findings.append(Finding(
+            check_id="world-writable",
+            title="World-writable в системных каталогах",
+            severity=Severity.INFO,
+            description="failed-to-run: find не удалось выполнить (нет прав или таймаут).",
+        ))
+        return findings
+
     writable = [line.strip() for line in output.splitlines() if line.strip()]
 
     if writable:
